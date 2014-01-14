@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Web;
 using N2.Collections;
 using N2.Edit.FileSystem;
 using N2.Edit.Workflow;
@@ -16,86 +17,86 @@ using N2.Edit.Versioning;
 
 namespace N2.Edit
 {
-	[Adapts(typeof(ContentItem))]
-	public class NodeAdapter : AbstractContentAdapter
-	{
-		private IEditUrlManager editUrlManager;
-		private IWebContext webContext;
-		private IHost host;
-		private IFileSystem fileSystem;
-		private VirtualNodeFactory nodeFactory;
-		private ISecurityManager security;
-		private NavigationSettings settings;
-		private ContentSource sources;
-		private IDefinitionManager definitions;
-		private ILanguageGateway languages;
-		private DraftRepository drafts;
+    [Adapts(typeof(ContentItem))]
+    public class NodeAdapter : AbstractContentAdapter
+    {
+        private IEditUrlManager editUrlManager;
+        private IWebContext webContext;
+        private IHost host;
+        private IFileSystem fileSystem;
+        private VirtualNodeFactory nodeFactory;
+        private ISecurityManager security;
+        private NavigationSettings settings;
+        private ContentSource sources;
+        private IDefinitionManager definitions;
+        private ILanguageGateway languages;
+        private DraftRepository drafts;
 
-		public NavigationSettings Settings
-		{
-			get { return settings ?? Engine.Resolve<NavigationSettings>(); }
-			set { settings = value; }
-		}
+        public NavigationSettings Settings
+        {
+            get { return settings ?? Engine.Resolve<NavigationSettings>(); }
+            set { settings = value; }
+        }
 
-		public ISecurityManager Security
-		{
-			get { return security ?? Engine.Resolve<ISecurityManager>(); }
-			set { security = value; }
-		}
+        public ISecurityManager Security
+        {
+            get { return security ?? Engine.Resolve<ISecurityManager>(); }
+            set { security = value; }
+        }
 
-		public IWebContext WebContext
-		{
-			get { return webContext ?? Engine.Resolve<IWebContext>(); }
-			set { webContext = value; }
-		}
+        public IWebContext WebContext
+        {
+            get { return webContext ?? Engine.Resolve<IWebContext>(); }
+            set { webContext = value; }
+        }
 
-		public VirtualNodeFactory NodeFactory
-		{
-			get { return nodeFactory ?? Engine.Resolve<VirtualNodeFactory>(); }
-			set { nodeFactory = value; }
-		}
+        public VirtualNodeFactory NodeFactory
+        {
+            get { return nodeFactory ?? Engine.Resolve<VirtualNodeFactory>(); }
+            set { nodeFactory = value; }
+        }
 
-		public IFileSystem FileSystem
-		{
-			get { return fileSystem ?? Engine.Resolve<IFileSystem>(); }
-			set { fileSystem = value; }
-		}
+        public IFileSystem FileSystem
+        {
+            get { return fileSystem ?? Engine.Resolve<IFileSystem>(); }
+            set { fileSystem = value; }
+        }
 
-		public IHost Host
-		{
-			get { return host ?? Engine.Resolve<IHost>(); }
-			set { host = value; }
-		}
+        public IHost Host
+        {
+            get { return host ?? Engine.Resolve<IHost>(); }
+            set { host = value; }
+        }
 
-		public IEditUrlManager ManagementPaths
-		{
-			get { return editUrlManager ?? Engine.ManagementPaths; }
-			set { editUrlManager = value; }
-		}
+        public IEditUrlManager ManagementPaths
+        {
+            get { return editUrlManager ?? Engine.ManagementPaths; }
+            set { editUrlManager = value; }
+        }
 
-		public ContentSource Sources
-		{
-			get { return sources ?? Engine.Resolve<ContentSource>(); }
-			set { sources = value; }
-		}
+        public ContentSource Sources
+        {
+            get { return sources ?? Engine.Resolve<ContentSource>(); }
+            set { sources = value; }
+        }
 
-		public IDefinitionManager Definitions
-		{
-			get { return definitions ?? Engine.Resolve<IDefinitionManager>(); }
-			set { definitions = value; }
-		}
+        public IDefinitionManager Definitions
+        {
+            get { return definitions ?? Engine.Resolve<IDefinitionManager>(); }
+            set { definitions = value; }
+        }
 
-		public ILanguageGateway Languages
-		{
-			get { return languages ?? Engine.Resolve<ILanguageGateway>(); }
-			set { languages = value; }
-		}
+        public ILanguageGateway Languages
+        {
+            get { return languages ?? Engine.Resolve<ILanguageGateway>(); }
+            set { languages = value; }
+        }
 
-		public DraftRepository Drafts
-		{
-			get { return drafts ?? Engine.Resolve<DraftRepository>(); }
-			set { drafts = value; }
-		}
+        public DraftRepository Drafts
+        {
+            get { return drafts ?? Engine.Resolve<DraftRepository>(); }
+            set { drafts = value; }
+        }
 
 
 		/// <summary>Gets the node representation used to build the tree hierarchy in the management UI.</summary>
@@ -109,12 +110,14 @@ namespace N2.Edit
 				Path = item.Path,
 				State = item.State,
 				IconUrl = GetIconUrl(item),
-				Title = item.Title,
+				IconClass = GetIconClass(item),
+				Title = Engine.Resolve<ISafeContentRenderer>().GetSafeHtml(item.Title),
 				ToolTip = "#" + item.ID + ": " +  Definitions.GetDefinition(item).Title,
 				PreviewUrl = GetPreviewUrl(item, allowDraft: allowDraft),
 				MaximumPermission = GetMaximumPermission(item),
 				SortOrder = item.SortOrder,
-				VersionIndex = item.VersionIndex
+				VersionIndex = item.VersionIndex,
+				ZoneName = item.ZoneName
 			};
 			
 			node.MetaInformation = GetMetaInformation(item);
@@ -128,16 +131,28 @@ namespace N2.Edit
 
 			if (Languages.IsLanguageRoot(item) && Languages.GetLanguage(item) != null)
 				mi["language"] = new MetaInfo { Text = Languages.GetLanguage(item).LanguageCode };
-			
-			if(!item.IsPage)
+
+			if (!item.IsPage)
 				mi["zone"] = new MetaInfo { Text = item.ZoneName };
-			
+
+			if (!item.Visible)
+				mi["hidden"] = new MetaInfo { Text = "", ToolTip = "Hidden" };
+
+			if (item.AlteredPermissions != Permission.None && item.AuthorizedRoles != null && item.AuthorizedRoles.Count > 0)
+				mi["locked"] = new MetaInfo { Text = "", ToolTip = "Locked" };
+
 			if (Host.IsStartPage(item))
 				mi["authority"] = new MetaInfo { Text = string.IsNullOrEmpty(Host.GetSite(item).Authority) ? "*" : Host.GetSite(item).Authority };
-			
+
+			if (item.Parent == null)
+				mi["root"] = new MetaInfo { Text = "" };
+
 			var draftInfo = Drafts.GetDraftInfo(item);
 			if (draftInfo != null && draftInfo.Saved > item.Updated)
 				mi["draft"] = new MetaInfo { Text = "&nbsp;", ToolTip = draftInfo.SavedBy + ": " + draftInfo.Saved };
+
+			if (item is ISystemNode)
+				mi["system"] = new MetaInfo { ToolTip = Definitions.GetDefinition(item).Title };
 
 			return mi;
 		}
@@ -162,7 +177,7 @@ namespace N2.Edit
 
 			if (!item.Visible)
 			{
-				className.Append("invisible ");
+				className.Append("notvisible ");
 			}
 
 			if (item.AlteredPermissions != Permission.None && item.AuthorizedRoles != null && item.AuthorizedRoles.Count > 0)
@@ -205,7 +220,8 @@ namespace N2.Edit
 			{
 				foreach (var child in NodeFactory.GetChildren(query.Parent.Path))
 				{
-					yield return child;
+					if (query.IsMatch(child))
+						yield return child;
 				}
 			}
 		}
@@ -222,7 +238,7 @@ namespace N2.Edit
 			if (query.Parent is IActiveChildren)
 				return ((IActiveChildren)query.Parent).GetChildren(new AccessFilter(WebContext.User, Security));
 
-			if (!Settings.DisplayDataItems)
+			if (!query.OnlyPages.HasValue && !Settings.DisplayDataItems)
 				query.OnlyPages = true;
 
 			var children = Sources.GetChildren(query);
@@ -236,7 +252,15 @@ namespace N2.Edit
 		/// <returns>True when there are children.</returns>
 		public virtual bool HasChildren(ContentItem parent, ItemFilter filter)
 		{
-			return Sources.HasChildren(new Query { Parent = parent, Filter = filter, Interface = Interfaces.Managing });
+			return HasChildren(new Query { Parent = parent, Filter = filter, Interface = Interfaces.Managing });
+		}
+
+		/// <summary>Returns true when an item has children.</summary>
+		/// <param name="query">The item whose childrens existence is to be determined.</param>
+		/// <returns>True when there are children.</returns>
+		public virtual bool HasChildren(Query query)
+		{
+			return Sources.HasChildren(query);
 		}
 
 		/// <summary>Gets the url used from the management UI when previewing an item.</summary>
@@ -280,6 +304,14 @@ namespace N2.Edit
 			return Url.ResolveTokens(item.IconUrl);
 		}
 
+		/// <summary>Gets the the icon class representing this item. This CSS class is used by a CSS sprite on the client.</summary>
+		/// <param name="item">The item whose icon class to get.</param>
+		/// <returns>An icon CSS class name or null.</returns>
+		public virtual string GetIconClass(ContentItem item)
+		{
+			return Url.ResolveTokens(item.IconClass);
+		}
+
 		/// <summary>Gets the permissions for the logged in user towards an item.</summary>
 		/// <param name="item">The item for which permissions should be retrieved.</param>
 		/// <returns>A permission flag.</returns>
@@ -314,9 +346,14 @@ namespace N2.Edit
 				tags.Add("Recent");
 
 			tags.Add(type.Assembly.GetName().Name);
-			
+
 			tags.AddRange(Utility.GetBaseTypesAndSelf(type).Where(t => t != typeof(object)).Select(t => t.Name));
 			tags.AddRange(type.GetInterfaces().Where(t => t.Namespace.Contains("Definition")).Select(t => t.Name));
+
+			var d = Definitions.GetDefinition(item);
+			tags.AddRange(d.AdditionalFlags);
+			if (d.RemovedFlags.Any())
+				tags.RemoveAll(f => d.RemovedFlags.Contains(f));
 
 			return tags;
 		}

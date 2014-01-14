@@ -1,51 +1,81 @@
 ﻿(function (module) {
-	module.factory('FrameManipulatorFactory', function () {
+	module.factory('LocationKeeper', function ($rootScope, $routeParams, $location, Content) {
+		$rootScope.$on("contextchanged", function (s, ctx) {
+			$location.search(Content.applySelection({}, ctx.CurrentItem))
+				.replace();
+		});
+		return {};
+	});
+
+	module.factory('Eventually', function ($timeout) {
+		return (function () {
+			// clears the previous action if a new event is triggered before the timeout
+			var timer = 0;
+			var timers = {};
+			return function(callback, ms, onWorkCancelled, parallelWorkGroup) {
+				if (!!parallelWorkGroup) {
+					if (timers[parallelWorkGroup]) {
+						$timeout.cancel(timers[parallelWorkGroup]);
+						onWorkCancelled();
+					}
+					timers[parallelWorkGroup] = $timeout(function() {
+						timers[parallelWorkGroup] = null;
+						callback();
+					}, ms);
+				} else {
+					timer && onWorkCancelled && onWorkCancelled();
+					timer && $timeout.cancel(timer);
+					timer = $timeout(function() {
+						timer = 0;
+						callback();
+					}, ms);
+				}
+			};
+		})();
+	});
+
+	window.frameHost = {
+		notify: function() {
+		}
+	};
+	module.factory('FrameManipulator', function () {
 		var frameManipulator = {
+			host: window.frameHost,
 			click: function (selector) {
-				console.log("click", selector);
-				window.frames.preview.window.location = window.frames.preview.window.jQuery(selector, window.frames.preview.window.document).attr("href");
+				var pf = window.frames.preview;
+				pf && pf.frameInteraction && pf.frameInteraction.execute(selector);
+			},
+			isReady: function () {
+				var pf = window.frames.preview;
+				return pf && pf.frameInteraction && pf.frameInteraction.ready;
 			},
 			hideToolbar: function (force) {
-				if (force || window.frames.preview.window.jQuery("#toolbar .inner > .command, #toolbar .rightAligned > .command, #toolbar .inner > .commandOptions > .command, #toolbar .rightAligned > .commandOptions >.command").not(".primary-action, .cancel, .globalize").length == 0) {
-					console.log("HIDING", window.frames.preview.window.jQuery("#toolbar .inner > .command, #toolbar .rightAligned > .command, #toolbar .inner > .commandOptions > .command, #toolbar .rightAligned > .commandOptions >.command").not(".primary-action, .cancel, .globalize").length);
-					window.frames.preview.window.jQuery("body").addClass("toolbar-hidden");
-				} else {
-					console.log("SHOWING", window.frames.preview.window.jQuery("#toolbar .inner > .command, #toolbar .rightAligned > .command, #toolbar .inner > .commandOptions > .command, #toolbar .rightAligned > .commandOptions >.command").not(".primary-action, .cancel, .globalize"));
-					window.frames.preview.window.jQuery("body").removeClass("toolbar-hidden");
-				}
+				var pf = window.frames.preview;
+				pf && pf.frameInteraction && pf.frameInteraction.hideToolbar(force);
 			},
 			getFrameActions: function () {
-				return window.frames.preview && window.frames.preview.frameActions;;
+				var pf = window.frames.preview;
+				return pf && pf.frameInteraction && pf.frameInteraction.getActions();
+			},
+			getFlags: function () {
+				var pf = window.frames.preview;
+				var flags = pf && pf.frameInteraction && pf.frameInteraction.getFlags && pf.frameInteraction.getFlags();
+				return flags || [];
 			}
 		};
 
-		function manipulator(scope) {
-			window.frameManipulator = this;
-
-			this.scope = scope;
-
-			scope.$on("$destroy", function () {
-				delete window.frameManipulator;
-			});
-			return this;
-		};
-		manipulator.prototype = frameManipulator;
-
-		return manipulator;
+		return frameManipulator;
 	});
+
 	module.factory('FrameContext', function () {
 		window.top.n2ctx = {
 			refresh: function (ctx) {
-				console.log("refresh", arguments);
 			},
 			select: function () {
-				//console.log("select", arguments);
 			},
 			unselect: function(){
-				//console.log("unselect", arguments);
 			},
 			update: function () {
-				//console.log("update", arguments);
 			},
 			hasTop: function () {
 				return "metro";
@@ -59,29 +89,71 @@
 	module.factory('Content', function ($resource) {
 		var res = $resource('Api/Content.ashx/:target', { target: '' }, {
 			'children': { method: 'GET', params: { target: 'children' } },
+			'branch': { method: 'GET', params: { target: 'branch' } },
+			'tree': { method: 'GET', params: { target: 'tree' } },
+			'ancestors': { method: 'GET', params: { target: 'ancestors' } },
+			'node': { method: 'GET', params: { target: 'node' } },
+			'parent': { method: 'GET', params: { target: 'parent' } },
 			'search': { method: 'GET', params: { target: 'search' } },
 			'translations': { method: 'GET', params: { target: 'translations' } },
 			'versions': { method: 'GET', params: { target: 'versions' } },
 			'definitions': { method: 'GET', params: { target: 'definitions' } },
 			'move': { method: 'POST', params: { target: 'move' } },
 			'sort': { method: 'POST', params: { target: 'sort' } },
-			'delete': { method: 'POST', params: { target: 'delete' } },
+			'remove': { method: 'POST', params: { target: 'delete' } },
 			'publish': { method: 'POST', params: { target: 'publish' } },
 			'unpublish': { method: 'POST', params: { target: 'unpublish' } },
 			'schedule': { method: 'POST', params: { target: 'schedule' } }
 		});
 
-		res.loadChildren = function (node, callback) {callback
-			if (!node)
-				return;
+		res.paths = {
+			SelectedQueryKey: "selected",
+			ItemQueryKey: "item"
+		};
 
-			node.Loading = true;
-			res.children({ selected: node.Current.Path }, function (data) {
-				node.Children = data.Children;
-				delete node.Loading;
-				node.IsPaged = data.IsPaged;
-				callback && callback(node);
-			});
+		res.applySelection = function(settings, currentItem) {
+			var path = currentItem && currentItem.Path;
+			var id = currentItem && currentItem.ID;
+
+			if (typeof currentItem == "string") {
+				path = currentItem;
+			} else if (typeof currentItem == "number") {
+				id = currentItem;
+			}
+
+			if (path || id) {
+				var selection = {};
+				selection[res.paths.SelectedQueryKey] = path;
+				selection[res.paths.ItemQueryKey] = id;
+				return angular.extend(selection, settings);
+			}
+			return settings;
+		};
+
+		res.loadChildren = function (node, callback) {
+		    if (!node)
+		        return;
+
+		    node.Loading = true;
+		    res.children(res.applySelection({}, node.Current), function (data) {
+		        node.Children = data.Children;
+		        delete node.Loading;
+		        node.IsPaged = data.IsPaged;
+		        node.HasChildren = data.Children.length > 0;
+		        callback && callback(node);
+		    });
+		};
+
+		res.reload = function (node, callback) {
+		    if (!node)
+		        return;
+
+		    node.Loading = true;
+		    res.node(res.applySelection({ }, node.Current), function (data) {
+		        node.Current = data.Node.Current;
+		        delete node.Loading;
+		        callback && callback(node);
+		    });
 		};
 
 		res.states = {
@@ -111,6 +183,13 @@
 		var res = $resource('Api/Context.ashx/:target', { target: '' }, {
 			'interface': { method: 'GET', params: { target: 'interface' } },
 			'full': { method: 'GET', params: { target: 'full' } }
+		});
+
+		return res;
+	});
+
+	module.factory('Profile', function ($resource) {
+		var res = $resource('Api/Profile.ashx', {}, {
 		});
 
 		return res;
@@ -153,9 +232,9 @@
 	});
 
 	module.factory('ContextMenuFactory', function () {
-		return function (scope) {
+		return function(scope) {
 			var contextMenu = this;
-			contextMenu.show = function (node) {
+			contextMenu.show = function(node) {
 				scope.select(node);
 				scope.ContextMenu.node = node;
 				scope.ContextMenu.options = [];
@@ -164,27 +243,23 @@
 					var cm = scope.Context.ContextMenu.Children[i];
 					scope.ContextMenu.options.push(cm.Current);
 				}
-
-				console.log("showing", node.Current.Title, scope.ContextMenu);
 			};
-			contextMenu.hide = function () {
-				console.log("hide", scope.ContextMenu.node);
-
+			contextMenu.hide = function() {
 				delete scope.ContextMenu.node;
 				delete scope.ContextMenu.options;
 				delete scope.ContextMenu.memory;
 				delete scope.ContextMenu.action;
 			};
-			contextMenu.cut = function (node) {
+			contextMenu.cut = function(node) {
 				contextMenu.memory = node.Current;
 				contextMenu.action = "cut";
-				
+
 			};
-			contextMenu.copy = function (node) {
+			contextMenu.copy = function(node) {
 				contextMenu.memory = node.Current;
 				contextMenu.action = "copy";
 			};
-		}
+		};
 	});
 
 	module.factory('SortHelperFactory', function (Content, Notify) {
@@ -196,7 +271,7 @@
 
 				node.HasChildren = true;
 				node.Loading = true;
-				Content.children({ selected: node.Current.Path }, function (data) {
+				Content.children(Content.applySelection({}, node.Current), function (data) {
 					node.Children = data.Children;
 					node.Expanded = true;
 					node.Loading = false;
@@ -205,23 +280,17 @@
 				});
 			}
 			this.move = function (ctx) {
-				console.log("moving", ctx);
 				Content.move(ctx.paths, function () {
-					console.log("moved", ctx);
-
 					reload(ctx);
-					Notify.show({ message: "Successfully noved " + (ctx.scopes.selected && ctx.scopes.selected.node && ctx.scopes.selected.node.Current.Title), type: "success", timeout: 3000 });
+					Notify.show({ message: "Moved " + (ctx.scopes.selected && ctx.scopes.selected.node && ctx.scopes.selected.node.Current.Title), type: "success", timeout: 3000 });
 				}, function () {
 					Notify.show({ message: "Failed moving " + (ctx.scopes.selected && ctx.scopes.selected.node && ctx.scopes.selected.node.Current.Title), type: "error" });
 				});
 			};
 			this.sort = function (ctx) {
-				console.log("sorting", ctx);
 				Content.sort(ctx.paths, function () {
-					console.log("sorted", ctx);
-
 					reload(ctx);
-					Notify.show({ message: "Successfully sorted " + (ctx.scopes.selected && ctx.scopes.selected.node && ctx.scopes.selected.node.Current.Title), type: "success", timeout: 3000 });
+					Notify.show({ message: "Sorted " + (ctx.scopes.selected && ctx.scopes.selected.node && ctx.scopes.selected.node.Current.Title), type: "success", timeout: 3000 });
 				}, function () {
 					Notify.show({ message: "Failed sorting " + (ctx.scopes.selected && ctx.scopes.selected.node && ctx.scopes.selected.node.Current.Title), type: "error" });
 				});

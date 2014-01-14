@@ -1,4 +1,4 @@
-<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Tree.aspx.cs" Inherits="N2.Edit.Navigation.Tree" meta:resourceKey="treePage" %>
+﻿<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Tree.aspx.cs" Inherits="N2.Edit.Navigation.Tree" meta:resourceKey="treePage" %>
 <%@ Register TagPrefix="edit" TagName="ContextMenu" Src="ContextMenu.ascx" %>
 <%@ Register TagPrefix="edit" Namespace="N2.Edit.Web.UI.Controls" Assembly="N2.Management" %>
 
@@ -9,6 +9,7 @@
         <title>Navigation</title>
         <asp:PlaceHolder runat="server">
 		<link rel="stylesheet" href="<%= MapCssUrl("all.css")%>" type="text/css" />
+		<link rel="stylesheet" href="<%= MapCssUrl("../font-awesome/css/font-awesome.min.css")%>" type="text/css" />
 		<link rel="stylesheet" href="<%= MapCssUrl("framed.css")%>" type="text/css" />
 		<link rel="stylesheet" href="<%= MapCssUrl("tree.css")%>" type="text/css" />
 		</asp:PlaceHolder>
@@ -24,7 +25,7 @@
 			}
 		</style>
     </head>
-<body class="tree framed noneSelected noPermission" style="font-family:'Myriad Pro',Sans-Serif; font-size:12px;">
+<body class="tree framed noneSelected noPermission" style="font-family:'Segoe UI', Helvetica,Sans-Serif; font-size:12px;">
 	<form id="form1" runat="server">
 		<div class="FileUpload">
 			<asp:Image ImageUrl="../../Resources/Icons/page_white_get.png" runat="server" style="vertical-align:middle" />
