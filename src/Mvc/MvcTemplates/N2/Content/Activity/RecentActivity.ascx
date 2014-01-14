@@ -4,7 +4,7 @@
 <n2:Box ID="boxActivity" HeadingText="Recent Activity" CssClass="box activityBox" runat="server" Visible="<%# ShowActivities %>" meta:resourceKey="boxActivity">
 </n2:Box>
 <script type="text/template" id="activityTemplate">
-	<table class="gv">
+	<table class="table table-striped table-hover table-condensed">
 		<thead>
 			<tr><td><%= GetLocalResourceString("bfOperation.HeaderText", "Operation") %></td><td><%= GetLocalResourceString("bfBy.HeaderText", "By") %></td><td></td></tr>
 		</thead>
@@ -43,9 +43,9 @@
 				return;
 			$.ajax({
 				method: "POST",
-				url: "editing.n2.ashx",
+				url: "<%= N2.Web.Url.ResolveTokens("{ManagementUrl}/Content/Activity/Notify.ashx") %>",
 				dataType: 'json',
-				data: { selected: n2ctx.selectedPath, action: "editing", activity: isDirty },
+				data: { selected: n2ctx.selectedPath, activity: "Edit", dirty: isDirty },
 				success: function (data) {
 					if (data.LastChange !== activities.LastChange)
 						$(activityContainer).html(template.render(data));

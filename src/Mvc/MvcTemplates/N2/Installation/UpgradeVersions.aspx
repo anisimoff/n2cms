@@ -5,6 +5,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" >
 <head runat="server">
     <title>Upgrade N2</title>
+    <link rel="stylesheet" type="text/css" href="../Resources/bootstrap/css/bootstrap.min.css" />
     <link rel="stylesheet" type="text/css" href="../Resources/Css/all.css" />
     <link rel="stylesheet" type="text/css" href="../Resources/Css/framed.css" />
     <link rel="stylesheet" type="text/css" href="../Resources/Css/themes/default.css" />
@@ -34,7 +35,6 @@
 
 			var $next = $(".version:not(.error):first");
 			if ($next.length) {
-				console.log("next ", $next);
 				$next.css("background-color", "moccasin");
 				$.post("UpgradeVersion.ashx", { item: $next.children(".version-id").text() }, function (result) {
 					if (result.success) {
@@ -48,11 +48,14 @@
 				});
 			}
 			else {
-				if (!error) {
-					$("#MigrationRun").slideUp();
-				}
 				$("#MigrationComplete").slideDown();
 				$(".migration-control").hide();
+				if (error) {
+					$("#MigrationComplete p.error").show();
+				} else {
+					$("#MigrationComplete h1").addClass("ok");
+					$("#MigrationRun").slideUp();
+				}				
 			}
 		}
 		function StopMigration() {
@@ -68,8 +71,9 @@
     <div>
         <n2:TabPanel ID="TabPanel1" ToolTip="Upgrade Versions" runat="server">
 			<div id="MigrationComplete" style="display:none">
-				<h1 class="ok">Complete</h1>
+				<h1>Finished</h1>
 				<p>Versions have been migrated.</p>
+				<p class="error" style="display:none">Errors occurred while migrating versions. Hover over the remaining items for some information and configure logging for full stack trace.</p>
 				<input type="button" onclick="CloseMigration();" value="Close" />
 			</div>
 
@@ -77,7 +81,7 @@
 				<h1>Upgrade versions to 2.4 model</h1>
 				<p>The migrate button will convert versions stored as items in the content item database to an external table. In the process the existing versions items will be deleted, and an added to the version table.</p>
 				<p>The version table will also include current parts on the page. Only the latest version of parts is included and previous versions of parts will be lost.</p>
-				<table class="gv">
+				<table class="table table-striped table-hover table-condensed">
 				<thead>
 					<tr><th>ID</th><th>Index</th><th>Title</th><th>Version Of</th></tr>
 				</thead>

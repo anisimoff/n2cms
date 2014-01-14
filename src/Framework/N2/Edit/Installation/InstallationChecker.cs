@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using N2.Configuration;
 using N2.Engine;
@@ -9,115 +9,121 @@ using System.Configuration;
 
 namespace N2.Edit.Installation
 {
-	[Service]
-	public class InstallationChecker : IAutoStart
-	{
-		private readonly Engine.Logger<InstallationChecker> logger;
-		IWebContext webContext;
-		EventBroker broker;
-		protected bool checkInstallation;
-		protected string welcomeUrl;
-		protected string managementUrl;
-		DatabaseStatus status;
-		InstallationManager installer;
+    [Service]
+    public class InstallationChecker : IAutoStart
+    {
+        private readonly Engine.Logger<InstallationChecker> logger;
+        IWebContext webContext;
+        EventBroker broker;
+        protected bool checkInstallation;
+        protected string welcomeUrl;
+        protected string managementUrl;
+        InstallationManager installer;
 
-		public InstallationChecker(IWebContext webContext, EventBroker broker, ConfigurationManagerWrapper configuration, InstallationManager installer)
-		{
-			this.installer = installer;
-			if (configuration.Sections.Management.Installer.CheckInstallationStatus)
-			{
-				welcomeUrl = configuration.Sections.Management.Installer.WelcomeUrl;
-				managementUrl = configuration.Sections.Management.Paths.ManagementInterfaceUrl;
-				this.webContext = webContext;
-				this.broker = broker;
-				this.status = installer.GetStatus();
+        private DatabaseStatus status;
+        public DatabaseStatus Status
+        {
+            get { return status ?? (status = installer.GetStatus()); }
+            set { status = value; }
+        }
 
-				installer.UpdateStatus(status.Level);
+        public InstallationChecker(IWebContext webContext, EventBroker broker, ConfigurationManagerWrapper configuration, InstallationManager installer)
+        {
+            this.installer = installer;
+            if (configuration.Sections.Management.Installer.CheckInstallationStatus)
+            {
+                welcomeUrl = configuration.Sections.Management.Installer.WelcomeUrl;
+                managementUrl = configuration.Sections.Management.Paths.ManagementInterfaceUrl;
+                this.webContext = webContext;
+                this.broker = broker;
+                this.Status = installer.GetStatus();
 
-				if(status.Level != SystemStatusLevel.UpAndRunning)
-					this.broker.BeginRequest += BeginRequest;
-			}
-			else
-			{
-				installer.UpdateStatus(SystemStatusLevel.Unconfirmed);
-			}
-		}
+                installer.UpdateStatus(Status.Level);
 
-		protected void BeginRequest(object sender, EventArgs args)
-		{
-			CheckInstallation();
-		}
+                if(Status.Level != SystemStatusLevel.UpAndRunning)
+                    this.broker.BeginRequest += BeginRequest;
+            }
+            else
+            {
+                installer.UpdateStatus(SystemStatusLevel.Unconfirmed);
+            }
+        }
 
-		private void CheckInstallation()
-		{
-			string currentUrl = Url.ToRelative(webContext.Url.LocalUrl);
-			
-			try 
-			{
-				AuthenticationSection authentication = ConfigurationManager.GetSection("system.web/authentication") as AuthenticationSection;
-				if (currentUrl.Trim('~', '/').StartsWith(Url.ToAbsolute(authentication.Forms.LoginUrl.Trim('~', '/')), StringComparison.InvariantCultureIgnoreCase))
-					// don't redirect from login page
-					return;
-			}
-			catch (Exception ex)
-			{
-				Engine.Logger.Warn(ex);
-			}
+        protected void BeginRequest(object sender, EventArgs args)
+        {
+            CheckInstallation();
+        }
 
-			if (status == null)
-			{
-				status = installer.GetStatus();
-			}
+        private void CheckInstallation()
+        {
+            string currentUrl = Url.ToRelative(webContext.Url.LocalUrl);
+            
+            try 
+            {
+                AuthenticationSection authentication = ConfigurationManager.GetSection("system.web/authentication") as AuthenticationSection;
+                if (currentUrl.Trim('~', '/').StartsWith(Url.ToAbsolute(authentication.Forms.LoginUrl.Trim('~', '/')), StringComparison.InvariantCultureIgnoreCase))
+                    // don't redirect from login page
+                    return;
+            }
+            catch (Exception ex)
+            {
+                Engine.Logger.Warn(ex);
+            }
 
-			Url redirectUrl = Url.ResolveTokens(welcomeUrl);
-			if (status == null)
-			{
-				Engine.Logger.Warn("Null status");
-				installer.UpdateStatus(SystemStatusLevel.Unknown);
-				return;
-			}
-			else if (status.NeedsUpgrade)
-			{
-				redirectUrl = redirectUrl.AppendQuery("action", "upgrade");
-			}
-			else if (!status.IsInstalled)
-			{
-				redirectUrl = redirectUrl.AppendQuery("action", "install");
-			}
-			else if (status.NeedsRebase)
-			{
-				redirectUrl = redirectUrl.AppendQuery("action", "rebase");
-			}
-			else
-			{
-				this.broker.BeginRequest -= BeginRequest;
-				installer.UpdateStatus(status.Level);
-				this.status = null;
-				return;
-			}
+            if (Status == null)
+            {
+                Status = installer.GetStatus();
+            }
 
-			installer.UpdateStatus(status.Level);
+            Url redirectUrl = Url.ResolveTokens(welcomeUrl);
+            if (Status == null)
+            {
+                Engine.Logger.Warn("Null status");
+                installer.UpdateStatus(SystemStatusLevel.Unknown);
+                return;
+            }
+            else if (Status.NeedsUpgrade)
+            {
+                redirectUrl = redirectUrl.AppendQuery("action", "upgrade");
+            }
+            else if (!Status.IsInstalled)
+            {
+                redirectUrl = redirectUrl.AppendQuery("action", "install");
+            }
+            else if (Status.NeedsRebase)
+            {
+                redirectUrl = redirectUrl.AppendQuery("action", "rebase");
+            }
+            else
+            {
+                this.broker.BeginRequest -= BeginRequest;
+                installer.UpdateStatus(Status.Level);
+                this.Status = null;
+                return;
+            }
 
-			bool isEditing = currentUrl.StartsWith(N2.Web.Url.ToRelative(managementUrl), StringComparison.InvariantCultureIgnoreCase);
-			if (isEditing)
-				return;
+            installer.UpdateStatus(Status.Level);
 
-			logger.Debug("Redirecting to '" + redirectUrl + "' to handle status: " + status.ToStatusString());
-			
-			this.status = null;
-			webContext.HttpContext.Response.Redirect(redirectUrl);
-		}
+            bool isEditing = currentUrl.StartsWith(N2.Web.Url.ToRelative(managementUrl), StringComparison.InvariantCultureIgnoreCase);
+            if (isEditing)
+                return;
 
-		#region IAutoStart Members
+            logger.Debug("Redirecting to '" + redirectUrl + "' to handle status: " + Status.ToStatusString());
+            
+            this.Status = null;
+            webContext.HttpContext.Response.Redirect(redirectUrl);
+        }
 
-		public void Start()
-		{
-		}
+        #region IAutoStart Members
 
-		public void Stop()
-		{
-		}
+        public void Start()
+        {
+        }
 
-		#endregion
-	}
+        public void Stop()
+        {
+        }
+
+        #endregion
+    }
 }
