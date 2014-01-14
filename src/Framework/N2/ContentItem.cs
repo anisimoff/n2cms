@@ -29,6 +29,7 @@ using System.Web;
 using N2.Collections;
 using N2.Definitions;
 using N2.Details;
+using N2.Edit;
 using N2.Engine;
 using N2.Persistence;
 using N2.Persistence.Proxying;
@@ -39,28 +40,28 @@ using System.Collections;
 
 namespace N2
 {
-    /// <summary>
-    /// The base of N2 content items. All content pages and data items are 
-    /// derived from this item. During the initialization phase the CMS looks 
-    /// for classes deriving from <see cref="ContentItem"/> marked with the 
-    /// <see cref="DefinitionAttribute"/> and makes them available for
-    /// editing and storage in the database.
-    /// </summary>
-    /// <example>
-    /// // Since the class is inheriting <see cref="ContentItem"/> it's 
-    /// // recognized by the CMS and made available for editing.
-    /// [PageDefinition(TemplateUrl = "~/Path/To/My/Template.aspx")]
-    /// public class MyPage : N2.ContentItem
-    /// {
-    ///	}
-    /// </example>
-    /// <remarks>
-    /// Note that the class name (e.g. MyPage) is used as discriminator when
-    /// retrieving items from database storage. If you change the class name 
-    /// you should manually change the discriminator in the database or set the 
-    /// name of the definition attribute, e.g. [Definition("Title", "OldClassName")]
-    /// </remarks>
-    [Serializable, DebuggerDisplay("{TypeName, nq} #{ID}, Name = {Name}")]
+	/// <summary>
+	/// The base of N2 content items. All content pages and data items are 
+	/// derived from this item. During the initialization phase the CMS looks 
+	/// for classes deriving from <see cref="ContentItem"/> marked with the 
+	/// <see cref="DefinitionAttribute"/> and makes them available for
+	/// editing and storage in the database.
+	/// </summary>
+	/// <example>
+	/// // Since the class is inheriting <see cref="ContentItem"/> it's 
+	/// // recognized by the CMS and made available for editing.
+	/// [PageDefinition(TemplateUrl = "~/Path/To/My/Template.aspx")]
+	/// public class MyPage : N2.ContentItem
+	/// {
+	///	}
+	/// </example>
+	/// <remarks>
+	/// Note that the class name (e.g. MyPage) is used as discriminator when
+	/// retrieving items from database storage. If you change the class name 
+	/// you should manually change the discriminator in the database or set the 
+	/// name of the definition attribute, e.g. [Definition("Title", "OldClassName")]
+	/// </remarks>
+	[Serializable, DebuggerDisplay("{TypeName, nq} #{ID}, Name = {Name}")]
 	[DynamicTemplate]
 	[SiblingInsertion(SortBy.CurrentOrder)]
 	[SortChildren(SortBy.CurrentOrder)]
@@ -68,7 +69,7 @@ namespace N2
 #pragma warning disable 612, 618
 	public abstract class ContentItem : INode,
 #pragma warning restore 612, 618
-		IComparable, 
+ IComparable,
 		IComparable<ContentItem>,
 		ICloneable,
 		IInjectable<IUrlParser>,
@@ -77,47 +78,47 @@ namespace N2
 		INameable,
 		IPlaceable
 	{
-        #region Private Fields
-        private int id;
-        private string title;
-        private string name;
+		#region Private Fields
+		private int id;
+		private string title;
+		private string name;
 		private string zoneName;
 		private string templateKey;
 		private int? translationKey;
 		private ContentItem parent = null;
-        private DateTime created;
-        private DateTime updated;
-        private DateTime? published = DateTime.Now;
-        private DateTime? expires = null;
-        private int sortOrder;
+		private DateTime created;
+		private DateTime updated;
+		private DateTime? published = N2.Utility.CurrentTime();
+		private DateTime? expires = null;
+		private int sortOrder;
 		private string url = null;
-        private bool visible = true;
+		private bool visible = true;
 		private ContentRelation versionOf;
 		private string savedBy;
 		private IList<Security.AuthorizedRole> authorizedRoles = null;
 		private IContentItemList<ContentItem> children = new ItemList<ContentItem>();
 		private IContentList<ContentDetail> details = new ContentList<ContentDetail>();
-		private IContentList<DetailCollection> detailCollections = new ContentList<DetailCollection>();
+		private IContentList<DetailCollection> detailCollections = new DetailCollectionList();
 		[NonSerialized]
 		private IUrlParser urlParser;
-    	private string ancestralTrail;
-        private int versionIndex;
+		private string ancestralTrail;
+		private int versionIndex;
 		private ContentState state = ContentState.None;
 		private CollectionState childState = CollectionState.Unknown;
 		private N2.Security.Permission alteredPermissions = N2.Security.Permission.None;
 		private int? hashCode;
 		#endregion
 
-        #region Constructor
-        /// <summary>Creates a new instance of the ContentItem.</summary>
+		#region Constructor
+		/// <summary>Creates a new instance of the ContentItem.</summary>
 		protected ContentItem()
-        {
-            var currentTime = Utility.CurrentTime();
-            created = currentTime;
-            updated = currentTime;
-            published = currentTime;
-        }
-        #endregion
+		{
+			var currentTime = Utility.CurrentTime();
+			created = currentTime;
+			updated = currentTime;
+			published = currentTime;
+		}
+		#endregion
 
 		#region Persisted Properties
 		/// <summary>Gets or sets item ID.</summary>
@@ -136,6 +137,12 @@ namespace N2
 			set { parent = value; }
 		}
 
+		/// <summary>Gets this item's parent if available, otherwise returns previsous version's parent.</summary>
+		public virtual ContentItem SafeParent
+		{
+			get { return parent ?? ((VersionOf == null) ? null : VersionOf.Parent); }
+		}
+
 		/// <summary>Gets or sets the item's title. This is used in edit mode and probably in a custom implementation.</summary>
 		[DisplayableHeading(1), NonInterceptable]
 		public virtual string Title
@@ -144,29 +151,29 @@ namespace N2
 			set { title = value; }
 		}
 
-        private static char[] invalidCharacters = new char[] { '%', '?', '&', '/', ':' };
+		private static char[] invalidCharacters = new char[] { '%', '?', '&', '/', ':' };
 		/// <summary>Gets or sets the item's name. This is used to compute the item's url and can be used to uniquely identify the item among other items on the same level.</summary>
 		[DisplayableLiteral, NonInterceptable]
 		public virtual string Name
 		{
-			get 
-            { 
-                return name ?? (ID > 0 ? ID.ToString() : null); 
-            }
-			set 
-            {
-                //if (value != null && value.IndexOfAny(invalidCharacters) >= 0) throw new N2Exception("Invalid characters in name, '%', '?', '&', '/', ':', '+', '.' not allowed.");
-                if (string.IsNullOrEmpty(value))
-                    name = null;
-                else
-                    name = value; 
-                url = null;  
-            }
+			get
+			{
+				return name ?? (ID > 0 ? ID.ToString() : null);
+			}
+			set
+			{
+				//if (value != null && value.IndexOfAny(invalidCharacters) >= 0) throw new N2Exception("Invalid characters in name, '%', '?', '&', '/', ':', '+', '.' not allowed.");
+				if (string.IsNullOrEmpty(value))
+					name = null;
+				else
+					name = value;
+				url = null;
+			}
 		}
 
 		/// <summary>Gets or sets zone name which is associated with data items and their placement on a page.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual string ZoneName
+		public virtual string ZoneName
 		{
 			get { return zoneName; }
 			set { zoneName = value; }
@@ -190,7 +197,7 @@ namespace N2
 
 		/// <summary>Gets or sets when this item was initially created.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual DateTime Created
+		public virtual DateTime Created
 		{
 			get { return created; }
 			set { created = value; }
@@ -198,7 +205,7 @@ namespace N2
 
 		/// <summary>Gets or sets the date this item was updated.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual DateTime Updated
+		public virtual DateTime Updated
 		{
 			get { return updated; }
 			set { updated = value; }
@@ -206,7 +213,7 @@ namespace N2
 
 		/// <summary>Gets or sets the publish date of this item.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual DateTime? Published
+		public virtual DateTime? Published
 		{
 			get { return published; }
 			set { published = value; }
@@ -214,15 +221,15 @@ namespace N2
 
 		/// <summary>Gets or sets the expiration date of this item.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual DateTime? Expires
+		public virtual DateTime? Expires
 		{
 			get { return expires; }
 			set { expires = value != DateTime.MinValue ? value : null; }
 		}
 
 		/// <summary>Gets or sets the sort order of this item.</summary>
-        [DisplayableLiteral, NonInterceptable]
-        public virtual int SortOrder
+		[DisplayableLiteral, NonInterceptable]
+		public virtual int SortOrder
 		{
 			get { return sortOrder; }
 			set { sortOrder = value; }
@@ -230,7 +237,7 @@ namespace N2
 
 		/// <summary>Gets or sets whether this item is visible. This is normally used to control its visibility in the site map provider.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual bool Visible
+		public virtual bool Visible
 		{
 			get { return visible; }
 			set { visible = value; }
@@ -241,7 +248,7 @@ namespace N2
 		public virtual ContentRelation VersionOf
 		{
 			get { return versionOf ?? (versionOf = new ContentRelation()); }
-			set 
+			set
 			{
 				//if (versionOf != null && value != null)
 				//    value.ValueAccessor = versionOf.ValueAccessor;
@@ -251,7 +258,7 @@ namespace N2
 
 		/// <summary>Gets or sets the name of the identity who saved this item.</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual string SavedBy
+		public virtual string SavedBy
 		{
 			get { return savedBy; }
 			set { savedBy = value; }
@@ -269,7 +276,13 @@ namespace N2
 		[NonInterceptable]
 		public virtual IContentList<DetailCollection> DetailCollections
 		{
-			get { return detailCollections; }
+			get
+			{
+				var enclosed = detailCollections as IEncolsedComponent;
+				if (enclosed != null && enclosed.EnclosingItem == null)
+					enclosed.EnclosingItem = this;
+				return detailCollections;
+			}
 			set { detailCollections = value; }
 		}
 
@@ -281,28 +294,28 @@ namespace N2
 			set { children = value; }
 		}
 
-		/// <summary>Represents the trail of id's uptil the current item e.g. "/1/10/14/"</summary>
+		/// <summary>Represents the trail of id's uptil the current item e.g. "/1/10/14/". The current item id is the last item in the ancestral trail.</summary>
 		[NonInterceptable]
 		public virtual string AncestralTrail
 		{
 			get { return ancestralTrail; }
 			set { ancestralTrail = value; }
-        }
+		}
 
-        /// <summary>The version number of this item</summary>
+		/// <summary>The version number of this item</summary>
 		[DisplayableLiteral, NonInterceptable]
-        public virtual int VersionIndex
-        {
-            get { return versionIndex; }
-            set { versionIndex = value; }
-        }
+		public virtual int VersionIndex
+		{
+			get { return versionIndex; }
+			set { versionIndex = value; }
+		}
 
 		[DisplayableLiteral, NonInterceptable]
-        public virtual ContentState State
-        {
-            get { return state; }
-            set { state = value; }
-        }
+		public virtual ContentState State
+		{
+			get { return state; }
+			set { state = value; }
+		}
 
 		[DisplayableLiteral, NonInterceptable]
 		public CollectionState ChildState
@@ -313,19 +326,19 @@ namespace N2
 
 		[DisplayableLiteral, NonInterceptable]
 		public virtual N2.Security.Permission AlteredPermissions
-        {
+		{
 			get { return alteredPermissions; }
 			set { alteredPermissions = value; }
-        }
+		}
 		#endregion
 
 		#region Generated Properties
 		/// <summary>The default file extension for this content item, e.g. ".aspx".</summary>
-        [NonInterceptable]
+		[NonInterceptable]
 		public virtual string Extension
-        {
-            get { return Web.Url.DefaultExtension; }
-        }
+		{
+			get { return Web.Url.DefaultExtension; }
+		}
 
 		/// <summary>Gets whether this item is a page. This is used for and site map purposes.</summary>
 		[NonInterceptable]
@@ -338,9 +351,9 @@ namespace N2
 		[DisplayableAnchor, NonInterceptable]
 		public virtual string Url
 		{
-			get 
+			get
 			{
-				if(url == null)
+				if (url == null)
 				{
 					if (urlParser != null)
 						url = urlParser.BuildUrl(this);
@@ -361,9 +374,16 @@ namespace N2
 		/// <summary>Gets the icon of this item. This can be used to distinguish item types in edit mode.</summary>
 		[DisplayableImage, NonInterceptable]
 		public virtual string IconUrl
-        {
+		{
 			get { return N2.Web.Url.ResolveTokens(Definitions.Static.DefinitionMap.Instance.GetOrCreateDefinition(this).IconUrl); }
-        }
+		}
+
+		/// <summary>Gets the icon class used by a CSS spite in the management UI to represent this item.</summary>
+		[DisplayableLiteral, NonInterceptable]
+		public virtual string IconClass
+		{
+			get { return Definitions.Static.DefinitionMap.Instance.GetOrCreateDefinition(this).IconClass; }
+		}
 
 		/// <summary>Gets the non-friendly url to this item (e.g. "/Default.aspx?page=1"). This is used to uniquely identify this item when rewriting to the template page. Non-page items have two query string properties; page and item (e.g. "/Default.aspx?page=1&amp;item&#61;27").</summary>
 		[Obsolete("Use the new template API: item.FindPath(PathData.DefaultAction).GetRewrittenUrl()"), NonInterceptable]
@@ -379,7 +399,7 @@ namespace N2
 		[NonInterceptable]
 		public virtual IList<Security.AuthorizedRole> AuthorizedRoles
 		{
-			get 
+			get
 			{
 				if (authorizedRoles == null)
 					authorizedRoles = new List<Security.AuthorizedRole>();
@@ -390,75 +410,74 @@ namespace N2
 
 		#endregion
 
-        #region this[]
+		#region this[]
 
 		/// <summary>Gets or sets the detail or property with the supplied name. If a property with the supplied name exists this is always returned in favour of any detail that might have the same name.</summary>
 		/// <param name="detailName">The name of the propery or detail.</param>
 		/// <returns>The value of the property or detail. If now property exists null is returned.</returns>
 		[NonInterceptable]
 		public virtual object this[string detailName]
-        {
-            get
-            {
+		{
+			get
+			{
 				if (detailName == null)
 					throw new ArgumentNullException("detailName");
 
-                switch (detailName)
-                {
-					case "AlteredPermissions":	return AlteredPermissions;
-					case "AncestralTrail":		return AncestralTrail;
-					case "Created":				return Created;
-					case "Expires":				return Expires;
-					case "Extension":			return Extension;
-					case "IconUrl":				return IconUrl;
-					case "ID":					return ID;
-					case "IsPage":				return IsPage;
-					case "Name":				return Name;
-					case "Parent":				return Parent;
-					case "Path":				return Path;
-					case "Published":			return Published;
-					case "SavedBy":				return SavedBy;
-					case "SortOrder":			return SortOrder;
-					case "State":				return State;
-					case "TemplateKey":			return TemplateKey;
-                    case "TemplateUrl":			return TemplateUrl;
-					case "TranslationKey":		return TranslationKey;
-					case "Title":				return Title;
-					case "Updated":				return Updated;
-					case "Url":					return Url;
-					case "VersionIndex":		return VersionIndex;
-					case "Visible":				return Visible;
-					case "ZoneName":			return ZoneName;
-                    default:
-						return Utility.Evaluate(this, detailName)
-							?? GetDetail(detailName);
-                }
-            }
-            set 
-            {
-                if (string.IsNullOrEmpty(detailName))
+				switch (detailName)
+				{
+					case "AlteredPermissions": return AlteredPermissions;
+					case "AncestralTrail": return AncestralTrail;
+					case "Created": return Created;
+					case "Expires": return Expires;
+					case "Extension": return Extension;
+					case "IconUrl": return IconUrl;
+					case "ID": return ID;
+					case "IsPage": return IsPage;
+					case "Name": return Name;
+					case "Parent": return Parent;
+					case "Path": return Path;
+					case "Published": return Published;
+					case "SavedBy": return SavedBy;
+					case "SortOrder": return SortOrder;
+					case "State": return State;
+					case "TemplateKey": return TemplateKey;
+					case "TemplateUrl": return TemplateUrl;
+					case "TranslationKey": return TranslationKey;
+					case "Title": return Title;
+					case "Updated": return Updated;
+					case "Url": return Url;
+					case "VersionIndex": return VersionIndex;
+					case "Visible": return Visible;
+					case "ZoneName": return ZoneName;
+					default:
+						return Utility.Evaluate(this, detailName) ?? GetDetail(detailName);
+				}
+			}
+			set
+			{
+				if (string.IsNullOrEmpty(detailName))
 					throw new ArgumentNullException("detailName", "Parameter 'detailName' cannot be null or empty.");
 
 				switch (detailName)
 				{
-					case "AlteredPermissions":	AlteredPermissions = Utility.Convert<Security.Permission>(value); break;
-					case "AncestralTrail":		AncestralTrail = Utility.Convert<string>(value); break;
-					case "Created":				Created = Utility.Convert<DateTime>(value); break;
-					case "Expires":				Expires = Utility.Convert<DateTime?>(value); break;
-					case "ID":					ID = Utility.Convert<int>(value); break;
-					case "Name":				Name = Utility.Convert<string>(value); break;
-					case "Parent":				Parent = Utility.Convert<ContentItem>(value); break;
-					case "Published":			Published = Utility.Convert<DateTime?>(value); break;
-					case "SavedBy":				SavedBy = Utility.Convert<string>(value); break;
-					case "SortOrder":			SortOrder = Utility.Convert<int>(value); break;
-					case "State":				State = Utility.Convert<ContentState>(value); break;
-					case "TemplateKey":			TemplateKey = Utility.Convert<string>(value); break;
-					case "TranslationKey":		TranslationKey = Utility.Convert<int>(value); break;
-					case "Title":				Title = Utility.Convert<string>(value); break;
-					case "Updated":				Updated = Utility.Convert<DateTime>(value); break;
-					case "VersionIndex":		VersionIndex = Utility.Convert<int>(value); break;
-					case "Visible":				Visible = Utility.Convert<bool>(value); break;
-					case "ZoneName":			ZoneName = Utility.Convert<string>(value); break;
+					case "AlteredPermissions": AlteredPermissions = Utility.Convert<Security.Permission>(value); break;
+					case "AncestralTrail": AncestralTrail = Utility.Convert<string>(value); break;
+					case "Created": Created = Utility.Convert<DateTime>(value); break;
+					case "Expires": Expires = Utility.Convert<DateTime?>(value); break;
+					case "ID": ID = Utility.Convert<int>(value); break;
+					case "Name": Name = Utility.Convert<string>(value); break;
+					case "Parent": Parent = Utility.Convert<ContentItem>(value); break;
+					case "Published": Published = Utility.Convert<DateTime?>(value); break;
+					case "SavedBy": SavedBy = Utility.Convert<string>(value); break;
+					case "SortOrder": SortOrder = Utility.Convert<int>(value); break;
+					case "State": State = Utility.Convert<ContentState>(value); break;
+					case "TemplateKey": TemplateKey = Utility.Convert<string>(value); break;
+					case "TranslationKey": TranslationKey = Utility.Convert<int>(value); break;
+					case "Title": Title = Utility.Convert<string>(value); break;
+					case "Updated": Updated = Utility.Convert<DateTime>(value); break;
+					case "VersionIndex": VersionIndex = Utility.Convert<int>(value); break;
+					case "Visible": Visible = Utility.Convert<bool>(value); break;
+					case "ZoneName": ZoneName = Utility.Convert<string>(value); break;
 					default:
 						{
 							PropertyInfo info = GetContentType().GetProperty(detailName);
@@ -476,14 +495,15 @@ namespace N2
 							}
 						}
 						break;
-				}     
-            }
-        }
+				}
+			}
+		}
 
 		internal static class KnownProperties
 		{
 			public const string AlteredPermissions = "AlteredPermissions";
 			public const string AncestralTrail = "AncestralTrail";
+			public const string ChildState = "ChildState";
 			public const string Created = "Created";
 			public const string Expires = "Expires";
 			public const string Extension = "Extension";
@@ -507,11 +527,11 @@ namespace N2
 			public const string Visible = "Visible";
 			public const string ZoneName = "ZoneName";
 
-			public static HashSet<string> WritablePartProperties = new HashSet<string>(new[] { AlteredPermissions, Created, Expires, Name, Parent, Published, SavedBy, SortOrder, State, TemplateKey, TranslationKey, Title, Updated, Visible, ZoneName });
-			public static HashSet<string> WritableProperties = new HashSet<string>(new[] { AlteredPermissions, AncestralTrail, Created, Expires, ID, Name, Parent, Published, SavedBy, SortOrder, State, TemplateKey, TranslationKey, Title, Updated, VersionIndex, Visible, ZoneName });
-			public static HashSet<string> ReadonlyProperties = new HashSet<string>(new [] { Extension, IconUrl, IsPage, Path, TemplateUrl, Url });
+			public static HashSet<string> WritablePartProperties = new HashSet<string>(new[] { AlteredPermissions, ChildState, Created, Expires, Name, Parent, Published, SavedBy, SortOrder, State, TemplateKey, TranslationKey, Title, Updated, Visible, ZoneName });
+			public static HashSet<string> WritableProperties = new HashSet<string>(new[] { AlteredPermissions, AncestralTrail, ChildState, Created, Expires, ID, Name, Parent, Published, SavedBy, SortOrder, State, TemplateKey, TranslationKey, Title, Updated, VersionIndex, Visible, ZoneName });
+			public static HashSet<string> ReadonlyProperties = new HashSet<string>(new[] { Extension, IconUrl, IsPage, Path, TemplateUrl, Url });
 		}
-        #endregion
+		#endregion
 
 		#region GetDetail & SetDetail<T> Methods
 		/// <summary>Gets a detail from the details bag.</summary>
@@ -520,22 +540,46 @@ namespace N2
 		[NonInterceptable]
 		public virtual object GetDetail(string detailName)
 		{
-			return Details.ContainsKey(detailName)
-				? Details[detailName].Value
-				: null;
+			return Details.ContainsKey(detailName) ? Details[detailName].Value : null;
 		}
 
-        /// <summary>Gets a detail from the details bag.</summary>
-        /// <param name="detailName">The name of the value to get.</param>
-        /// <param name="defaultValue">The default value to return when no detail is found.</param>
-        /// <returns>The value stored in the details bag or null if no item was found.</returns>
+		/// <summary>Gets a detail from the details bag.</summary>
+		/// <param name="detailName">The name of the value to get.</param>
+		/// <param name="defaultValue">The default value to return when no detail is found.</param>
+		/// <returns>The value stored in the details bag or null if no item was found.</returns>
 		[NonInterceptable]
 		public virtual T GetDetail<T>(string detailName, T defaultValue)
-        {
-            return Details.ContainsKey(detailName)
-                ? (T)Details[detailName].Value
-                : defaultValue;
-        }
+		{
+			object o = null;
+			try
+			{
+				if (Details.ContainsKey(detailName))
+				{
+					o = Details[detailName].Value;
+					if (typeof(T).IsEnum && o != null && o.GetType() == typeof(string) && Enum.IsDefined(typeof(T), o))
+					{
+						return (T)Enum.Parse(typeof(T), (string)o); // Special case: Handle enum
+					}
+					else
+					{
+						return (T)(o == null ? null : o); // Attempt regular cast conversion
+					}
+				}
+				else
+				{
+					return defaultValue;
+				}
+			}
+			catch (InvalidCastException inner)
+			{
+				throw new InvalidCastException(
+					String.Format("Cannot cast detail {0} of type {1} to type {2}.",
+						detailName,
+						o == null ? "NULL" : o.GetType().FullName,
+						typeof(T).FullName
+						), inner);
+			}
+		}
 
 		/// <summary>Set a value into the <see cref="Details"/> bag. If a value with the same name already exists it is overwritten. If the value equals the default value it will be removed from the details bag.</summary>
 		/// <param name="detailName">The name of the item to set.</param>
@@ -545,13 +589,9 @@ namespace N2
 		protected internal virtual void SetDetail<T>(string detailName, T value, T defaultValue)
 		{
 			if (value == null || !value.Equals(defaultValue))
-			{
 				SetDetail(detailName, value);
-			}
 			else if (Details.ContainsKey(detailName))
-			{
 				details.Remove(detailName);
-			}
 		}
 
 		/// <summary>Set a value into the <see cref="Details"/> bag. If a value with the same name already exists it is overwritten.</summary>
@@ -624,7 +664,8 @@ namespace N2
 
 			url = null;
 			Parent = newParent;
-			
+			AncestralTrail = newParent.GetTrail();
+
 			if (newParent != null && !newParent.Children.Contains(this))
 			{
 				newParent.Children.Add(this);
@@ -658,7 +699,7 @@ namespace N2
 			return PathDictionary.GetPath(this, remainingUrl);
 		}
 
-    	/// <summary>Tries to get a child item with a given name. This method igonres user permissions and any trailing '.aspx' that might be part of the name.</summary>
+		/// <summary>Tries to get a child item with a given name. This method igonres user permissions and any trailing '.aspx' that might be part of the name.</summary>
 		/// <param name="childName">The name of the child item to get.</param>
 		/// <returns>The child item if it is found otherwise null.</returns>
 		/// <remarks>If the method is passed an empty or null string it will return null.</remarks>
@@ -669,34 +710,34 @@ namespace N2
 				return null;
 
 			// Walk all segments, if any (note that double slashes are ignored)
-    		var segments = childName.Split(new[] {'/'}, 2, StringSplitOptions.RemoveEmptyEntries);
+			var segments = childName.Split(new[] { '/' }, 2, StringSplitOptions.RemoveEmptyEntries);
 			if (segments.Length == 0) return this;
 
 			// Unscape the segment and find a child node with a matching name
 			var nameSegment = HttpUtility.UrlDecode(segments[0]);
 			var childItem = FindNamedChild(nameSegment);
 
-    		// Recurse into children if there are more segments
-    		return childItem != null && segments.Length == 2
-    		       	? childItem.GetChild(segments[1])
-    		       	: childItem;
+			// Recurse into children if there are more segments
+			return childItem != null && segments.Length == 2
+					? childItem.GetChild(segments[1])
+					: childItem;
 		}
-        
-        /// <summary>
-        /// Find a direct child by its name
-        /// </summary>
-        /// <param name="nameSegment">Child name. Cannot contain slashes.</param>
-        /// <returns></returns>
+
+		/// <summary>
+		/// Find a direct child by its name
+		/// </summary>
+		/// <param name="nameSegment">Child name. Cannot contain slashes.</param>
+		/// <returns></returns>
 		[NonInterceptable]
 		protected virtual ContentItem FindNamedChild(string nameSegment)
-        {
-            var childItem = Children.FindNamed(nameSegment);
-            if (childItem == null && string.IsNullOrEmpty(Extension) == false)
-            {
-    	        childItem = Children.FindNamed(Web.Url.RemoveAnyExtension(nameSegment));
-            }
-            return childItem;
-        }
+		{
+			var childItem = Children.FindNamed(nameSegment);
+			if (childItem == null && string.IsNullOrEmpty(Extension) == false)
+			{
+				childItem = Children.FindNamed(Web.Url.RemoveAnyExtension(nameSegment));
+			}
+			return childItem;
+		}
 
 		/// <summary>
 		/// Compares the item's name ignoring case and extension.
@@ -705,12 +746,12 @@ namespace N2
 		/// <returns>True if the supplied name is considered the same as the item's.</returns>
 		[NonInterceptable]
 		protected virtual bool IsNamed(string name)
-        {
-            if (Name == null)
-                return false;
-            return Name.Equals(name, StringComparison.InvariantCultureIgnoreCase) 
+		{
+			if (Name == null)
+				return false;
+			return Name.Equals(name, StringComparison.InvariantCultureIgnoreCase)
 				|| (Name + Extension).Equals(name, StringComparison.InvariantCultureIgnoreCase);
-        }
+		}
 
 		/// <summary>Gets child items the current user is allowed to access.</summary>
 		/// <returns>A list of content items.</returns>
@@ -725,14 +766,11 @@ namespace N2
 		/// <param name="childZoneName">The name of the zone.</param>
 		/// <returns>A list of items that have the specified zone name.</returns>
 		/// <remarks>This method is used by N2 when when non-page items are added to a zone on a page and in edit mode when displaying which items are placed in a certain zone. Keep this in mind when overriding this method.</remarks>
-		[NonInterceptable]
+		[NonInterceptable, Obsolete("Use GetChildren(new ZoneFilter(\"childZoneName\"), new AccessFilter()) instead. This method will be removed in N2CMS 3.0.")]
 		public virtual ItemList GetChildren(string childZoneName)
-        {
-			return GetChildren(
-                new AllFilter(
-                    new ZoneFilter(childZoneName), 
-                    new AccessFilter()));
-        }
+		{
+			return GetChildren(new AllFilter(new ZoneFilter(childZoneName), new AccessFilter()));
+		}
 
 		/// <summary>Gets children applying filters.</summary>
 		/// <param name="filters">The filters to apply on the children.</param>
@@ -780,25 +818,25 @@ namespace N2
 				return 0;
 		}
 		int IComparable<ContentItem>.CompareTo(ContentItem other)
-        {
-            return SortOrder - other.SortOrder;
-        }
+		{
+			return SortOrder - other.SortOrder;
+		}
 
-        #endregion
+		#endregion
 
-        #region ICloneable Members
+		#region ICloneable Members
 
 		object ICloneable.Clone()
 		{
 			return Clone(true);
 		}
-		
+
 		/// <summary>Creates a copy of this item including details and authorized roles resetting ID.</summary>
 		/// <param name="includeChildren">Wether this item's child items also should be cloned.</param>
 		/// <returns>The cloned item with or without cloned child items.</returns>
 		[NonInterceptable]
 		public virtual ContentItem Clone(bool includeChildren)
-        {
+		{
 			ContentItem cloned = (ContentItem)Activator.CreateInstance(GetContentType(), true); //(ContentItem)MemberwiseClone(); 
 
 			CloneUnversionableFields(this, cloned);
@@ -808,8 +846,8 @@ namespace N2
 			CloneChildren(this, cloned, includeChildren);
 			CloneAuthorizedRoles(this, cloned);
 
-            return cloned;
-        }
+			return cloned;
+		}
 
 		#region Clone Helper Methods
 		static void CloneUnversionableFields(ContentItem source, ContentItem destination)
@@ -823,7 +861,7 @@ namespace N2
 		static void CloneFields(ContentItem source, ContentItem destination)
 		{
 			destination.title = source.title;
-			if(source.id.ToString() != source.name)
+			if (source.id.ToString() != source.name)
 				destination.name = source.name;
 			destination.alteredPermissions = source.alteredPermissions;
 			destination.created = source.created;
@@ -875,11 +913,11 @@ namespace N2
 		{
 			foreach (ContentDetail detail in source.Details.Values)
 			{
-				if(destination.details.ContainsKey(detail.Name)) 
+				if (destination.details.ContainsKey(detail.Name))
 				{
 					destination.details[detail.Name].Value = detail.Value;//.Value should behave polymorphically
-				} 
-				else 
+				}
+				else
 				{
 					ContentDetail clonedDetail = detail.Clone();
 					clonedDetail.EnclosingItem = destination;
@@ -890,14 +928,13 @@ namespace N2
 			foreach (DetailCollection collection in source.DetailCollections.Values)
 			{
 				DetailCollection clonedCollection = collection.Clone();
-				clonedCollection.EnclosingItem = destination;
-				destination.DetailCollections[collection.Name] = clonedCollection;
+				clonedCollection.AddTo(destination);
 			}
-		} 
+		}
 		#endregion
 
 
-        #endregion
+		#endregion
 
 		#region INode Members
 
@@ -935,16 +972,16 @@ namespace N2
 			{
 				StringBuilder className = new StringBuilder();
 
-				if (!Published.HasValue || Published > DateTime.Now)
+				if (!Published.HasValue || Published > N2.Utility.CurrentTime())
 					className.Append("unpublished ");
-				else if (Published > DateTime.Now.AddDays(-1))
+				else if (Published > N2.Utility.CurrentTime().AddDays(-1))
 					className.Append("day ");
-				else if (Published > DateTime.Now.AddDays(-7))
+				else if (Published > N2.Utility.CurrentTime().AddDays(-7))
 					className.Append("week ");
-				else if (Published > DateTime.Now.AddMonths(-1))
+				else if (Published > N2.Utility.CurrentTime().AddMonths(-1))
 					className.Append("month ");
 
-				if (Expires.HasValue && Expires <= DateTime.Now)
+				if (Expires.HasValue && Expires <= N2.Utility.CurrentTime())
 					className.Append("expired ");
 
 				if (!Visible)
@@ -970,20 +1007,14 @@ namespace N2
 				return true;
 
 			// Iterate allowed roles to find an allowed role
-			foreach (Security.AuthorizedRole auth in AuthorizedRoles)
-			{
-				if (auth.IsAuthorized(user))
-					return true;
-			}
-			return false;
-
+			return AuthorizedRoles.Any(auth => auth.IsAuthorized(user));
 		}
 
 		#region ILink Members
 
 		string ILink.Contents
 		{
-			get { return Title; }
+			get { return N2.Context.Current.Resolve<ISafeContentRenderer>().HtmlEncode(Title); }
 		}
 
 		string ILink.ToolTip
@@ -996,7 +1027,7 @@ namespace N2
 			get { return string.Empty; }
 		}
 
-    	#endregion
+		#endregion
 		#endregion
 
 		#region Equals, HashCode and ToString Overrides
@@ -1008,7 +1039,12 @@ namespace N2
 			if (object.ReferenceEquals(this, obj)) return true;
 			ContentItem other = obj as ContentItem;
 			if (other == null)
-				return false;
+			{
+				ContentRelation relation = obj as ContentRelation;
+				if (relation == null)
+					return false;
+				return relation.HasValue && relation.ID.Value == ID;
+			}
 			if (id != 0 && id == other.id)
 				return true;
 			if (id != 0 || other.id != 0)
@@ -1085,7 +1121,7 @@ namespace N2
 		{
 			// remove details not present in source
 			List<string> detailKeys = new List<string>(destination.Details.Keys);
-			foreach(string key in detailKeys)
+			foreach (string key in detailKeys)
 			{
 				if (!source.Details.ContainsKey(key))
 					destination.Details.Remove(key);
@@ -1100,9 +1136,9 @@ namespace N2
 					DetailCollection destinationCollection = destination.DetailCollections[key];
 					DetailCollection sourceCollection = source.DetailCollections[key];
 					List<object> values = new List<object>(destinationCollection.Enumerate<object>());
-					foreach(object value in values)
+					foreach (object value in values)
 					{
-						if(!sourceCollection.Contains(value))
+						if (!sourceCollection.Contains(value))
 							destinationCollection.Remove(value);
 					}
 				}
@@ -1141,53 +1177,53 @@ namespace N2
 		IEnumerable IInterceptableType.GetValues(string detailCollectionName)
 		{
 			return GetDetailCollection(detailCollectionName, false);
-        }
+		}
 
-        object IInterceptableType.GetChild(string childName)
-        {
-            return GetChild(childName);
-        }
+		object IInterceptableType.GetChild(string childName)
+		{
+			return GetChild(childName);
+		}
 
-        void IInterceptableType.SetChild(string childName, object child)
-        {
-            if (child == null)
-                return;
+		void IInterceptableType.SetChild(string childName, object child)
+		{
+			if (child == null)
+				return;
 
-            var existingChild = GetChild(childName);
-            if (existingChild != null)
-                return;
+			var existingChild = GetChild(childName);
+			if (existingChild != null)
+				return;
 
-            var newChild = child as ContentItem;
-            if (newChild == null)
-                throw new NotSupportedException(child.GetType() + " isn't a supported child type.");
+			var newChild = child as ContentItem;
+			if (newChild == null)
+				throw new NotSupportedException(child.GetType() + " isn't a supported child type.");
 
-            if (string.IsNullOrEmpty(newChild.Name) || newChild.Name == newChild.ID.ToString())
-                newChild.Name = childName;
-            if (newChild.parent == null)
-                newChild.AddTo(this);
-        }
+			if (string.IsNullOrEmpty(newChild.Name) || newChild.Name == newChild.ID.ToString())
+				newChild.Name = childName;
+			if (newChild.parent == null)
+				newChild.AddTo(this);
+		}
 
-        IEnumerable IInterceptableType.GetChildren(string zoneName)
-        {
-            return Children.FindParts(zoneName);
-        }
+		IEnumerable IInterceptableType.GetChildren(string zoneName)
+		{
+			return Children.FindParts(zoneName);
+		}
 
-        void IInterceptableType.SetChildren(string zoneName, IEnumerable children)
-        {
-            var existing = Children.FindParts(zoneName).ToList();
-            if (children == null)
-                // while this might indicate someone wants to remove children, this isn't supported in this way
-                return;
+		void IInterceptableType.SetChildren(string zoneName, IEnumerable children)
+		{
+			var existing = Children.FindParts(zoneName).ToList();
+			if (children == null)
+				// while this might indicate someone wants to remove children, this isn't supported in this way
+				return;
 
-            var newChildren = children.Cast<ContentItem>();
-            foreach(var added in newChildren.Except(existing))
-            {
-                if (added.ZoneName == null)
-                    added.ZoneName = zoneName;
-                if (added.Parent == null)
-                    added.AddTo(this);
-            }
-        }
+			var newChildren = children.Cast<ContentItem>();
+			foreach (var added in newChildren.Except(existing))
+			{
+				if (added.ZoneName == null)
+					added.ZoneName = zoneName;
+				if (added.Parent == null)
+					added.AddTo(this);
+			}
+		}
 
 		public virtual Type GetContentType()
 		{
@@ -1204,5 +1240,5 @@ namespace N2
 		}
 
 		#endregion
-    }
+	}
 }
