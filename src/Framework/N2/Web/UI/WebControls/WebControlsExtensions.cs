@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,15 +12,9 @@ namespace N2.Web.UI.WebControls
     {
         public static bool IsManaging(this ControlPanelState state)
         {
-            switch (state)
-            {
-                case ControlPanelState.DragDrop:
-                case ControlPanelState.Editing:
-                case ControlPanelState.Previewing:
-                    return true;
-                default:
-                    return false;
-            }
+            return state.IsFlagSet(ControlPanelState.DragDrop) ||
+                state.IsFlagSet(ControlPanelState.Editing) ||
+                state.IsFlagSet(ControlPanelState.Previewing);
         }
 
         public static string GetInterface(this ControlPanelState state)
