@@ -4,38 +4,43 @@
 	<!-- Framework -->
 
 	<ItemGroup>
-		<Framework-Dependencies Include="$(LibFolder)\Castle.Core.*;
-										 $(LibFolder)\Castle.Windsor.*;
-										 $(LibFolder)\System.Web.Mvc.*;
-										 $(LibFolder)\NHibernate.dll;
-										 $(LibFolder)\NHibernate.Caches.SysCache2.dll;
-										 $(RootFolder)\lib\System.Data.SQLite.dll"/>
-
 		<TextFiles Include="$(DocFolder)\history.txt;
 							$(DocFolder)\howto_install.txt;
 							$(DocFolder)\howto_develop.txt;
 							$(DocFolder)\license.txt;
-							$(DocFolder)\n2_readme.txt" />
+							$(DocFolder)\n2_readme.txt;
+							$(DocFolder)\upgrade.txt;
+							$(DocFolder)\n2cms.configuration.xsd" />
 
 		<Snippets Include="$(SnippetsFolder)\*" />
 	</ItemGroup>
-	
+
 	<!-- Build -->
 
 	<Target Name="Framework-Build" DependsOnTargets="Framework-PrepareDependencies">
-    <Message Text="Configuration=$(Configuration);Platform=$(Platform)"/>
+		<Message Text="Configuration=$(Configuration);Platform=$(Platform)"/>
 		<MSBuild Projects="$(SrcFolder)\N2.Sources.sln" Properties="Configuration=$(Configuration);Platform=$(Platform)" />
 	</Target>
 
 	<!-- Prepare dependencies -->
 
 	<Target Name="Framework-PrepareDependencies">
-		<Copy SourceFiles="@(Framework-Dependencies)" DestinationFolder="$(ManagementFolder)\bin" />
+		<Copy SourceFiles="@(Framework-DependencyBinaries)" DestinationFolder="$(ManagementFolder)\bin\" />
+		<Copy SourceFiles="@(Framework-Dependencies)" DestinationFiles="$(ManagementFolder)\%(RecursiveDir)\%(FileName)%(Extension)" ContinueOnError="true" />
 	</Target>
 
 	<Target Name="Framework-CreateItemGroups-EditFiles">
 		<ItemGroup>
-			<Framework-EditFiles	Include="$(EditFolder)\**\*.resx;
+			<Framework-LocalizedResources Include="$(EditFolder)\**\i18n\*.js;
+																						 $(EditFolder)\**\App_LocalResources\da\*.resx;$(EditFolder)\**\App_LocalResources\*.da.resx;
+																						 $(EditFolder)\**\App_LocalResources\it\*.resx;$(EditFolder)\**\App_LocalResources\*.it.resx;
+																						 $(EditFolder)\**\App_LocalResources\mk-MK\*.resx;$(EditFolder)\**\App_LocalResources\*.mk-MK.resx;
+																						 $(EditFolder)\**\App_LocalResources\nl\*.resx;$(EditFolder)\**\App_LocalResources\*.nl.resx;
+																						 $(EditFolder)\**\App_LocalResources\ru\*.resx;$(EditFolder)\**\App_LocalResources\*.ru.resx;
+																						 $(EditFolder)\**\App_LocalResources\sl\*.resx;$(EditFolder)\**\App_LocalResources\*.sl.resx;"
+																		Exclude="$(EditFolder)\**\i18n\*en.js;
+																						 $(EditFolder)\**\lang\*en.js;"/>
+			<Framework-EditFiles Include="$(EditFolder)\**\*.resx;
 											 $(EditFolder)\**\*.as?x;
 											 $(EditFolder)\**\*.master;
 											 $(EditFolder)\**\*.config;
@@ -44,14 +49,41 @@
 											 $(EditFolder)\**\*.gif;$(EditFolder)\**\*.png;$(EditFolder)\**\*.jpg;$(EditFolder)\**\*.png;
 											 $(EditFolder)\**\*.htm;$(EditFolder)\**\*.html;
 											 $(EditFolder)\**\*.swf;
+											 $(EditFolder)\**\*.eot;$(EditFolder)\**\*.svg;$(EditFolder)\**\*.ttf;$(EditFolder)\**\*.woff;$(EditFolder)\**\*.otf;
 											 $(EditFolder)\**\*.txt;$(EditFolder)\**\*.sql;"
-									Exclude="$(EditFolder)\**\*_src.js;" />
+									Exclude="$(EditFolder)\**\*_src.js;
+													 $(EditFolder)\**\development-bundle\**\*.*;
+													 $(EditFolder)\**\docs\**\*.*;
+													 $(EditFolder)\**\obj\**\*.*;
+													 $(EditFolder)\**\Debug\**\*.*;
+													 $(EditFolder)\**\Release\**\*.*;
+													 $(EditFolder)\**\test\**\*.*;
+													 $(EditFolder)\**\samples\**\*.*;
+													 $(EditFolder)\**\angular.js;
+													 $(EditFolder)\Resources\angular-*\angular-cookies*.js;
+													 $(EditFolder)\Resources\angular-*\angular-loader*.js;
+													 $(EditFolder)\Resources\angular-*\angular-mobile*.js;
+													 $(EditFolder)\Resources\angular-*\angular-mocks*.js;
+													 $(EditFolder)\Resources\angular-*\angular-resource.js;
+													 $(EditFolder)\Resources\angular-*\angular-sanitize*.js;
+													 $(EditFolder)\Resources\angular-*\angular-scenario.js;
+													 $(EditFolder)\Resources\angular-ui-*\build\angular-ui-ieshiv.css;
+													 $(EditFolder)\Resources\angular-ui-*\build\angular-ui.css;
+													 $(EditFolder)\Resources\angular-ui-*\build\angular-ui.js;
+													 $(EditFolder)\Resources\bootstrap\css\bootstrap.css;
+													 $(EditFolder)\Resources\bootstrap\js\bootstrap.js;
+													 $(EditFolder)\Resources\bootstrap-components\angular-strap.js;
+													 $(EditFolder)\Resources\font-awesome\css\font-awesome-ie7.css;
+													 $(EditFolder)\Resources\font-awesome\css\font-awesome.css;
+													 $(EditFolder)\Resources\jquery-ui*\css\smoothness\jquery-ui-1.10.2.custom.css;
+													 $(EditFolder)\Resources\jquery-ui*\js\jquery-ui-1.10.2.custom.js;
+													 @(Framework-LocalizedResources)" />
 		</ItemGroup>
 	</Target>
 
 	<Target Name="Framework-DeployResources">
 		<ItemGroup>
-			<Framework-Resources	Include="$(EditFolder)\**\*.resx"
+			<Framework-Resources Include="$(EditFolder)\**\*.resx"
 									Exclude="$(EditFolder)\**\*.da.resx;
 											 $(EditFolder)\**\*.it.resx;
 											 $(EditFolder)\**\*.mk.resx;
@@ -96,101 +128,6 @@
 	<Target Name="CopyManagementFilesToManagementFilesDestination" Condition="'$(ManagementFilesDestination)' != ''" DependsOnTargets="Framework-CreateItemGroups-EditFiles">
 		<Message Text="xcopy management files to $(ManagementFilesDestination)" />
 		<Copy SourceFiles="@(Framework-EditFiles)" DestinationFolder="$(ManagementFilesDestination)\%(RecursiveDir)" />
+		<Copy SourceFiles="@(Framework-LocalizedResources)" DestinationFolder="$(ManagementFilesDestination)\%(RecursiveDir)" />
 	</Target>
-	
-	<!-- Deploy -->
-
-	<PropertyGroup>
-		<Framework-DeployFolder>$(DeployFolder)\$(DeployPrefix)Framework</Framework-DeployFolder>
-		<Framework-NugetFolder>$(DeployFolder)\$(DeployPrefix)Framework_Nuget</Framework-NugetFolder>
-		<Library-NugetFolder>$(DeployFolder)\$(DeployPrefix)Library_Nuget</Library-NugetFolder>
-		<SQLite-NugetFolder>$(DeployFolder)\$(DeployPrefix)SQLite_Nuget</SQLite-NugetFolder>
-		<Razor-NugetFolder>$(DeployFolder)\$(DeployPrefix)Razor_Nuget</Razor-NugetFolder>
-	</PropertyGroup>
-
-	<Target Name="Framework-Deploy" DependsOnTargets="Framework-CreateItemGroups">
-		<Copy SourceFiles="@(Framework-BinFiles)" DestinationFolder="$(Framework-DeployFolder)\bin" />
-		<Copy SourceFiles="@(Framework-EditFiles)" DestinationFolder="$(Framework-DeployFolder)\N2\%(RecursiveDir)" SkipUnchangedFiles="true" />
-		<Copy SourceFiles="@(TextFiles)" DestinationFolder="$(Framework-DeployFolder)" />
-	</Target>
-
-	<Target Name="Library-NuGet" DependsOnTargets="Framework-Deploy">
-		<ItemGroup>
-			<nugetLibraryBinFiles Include="$(ManagementFolder)\bin\N2.dll;
-										   $(ManagementFolder)\bin\N2.pdb;
-										   $(ManagementFolder)\bin\N2.xml;"/>
-		</ItemGroup>
-		<Copy SourceFiles="@(nugetLibraryBinFiles)" DestinationFolder="$(Library-NugetFolder)\lib" />
-
-		<ItemGroup>
-			<libraryNugetIncludes Include="$(BuildFolder)\Nuget\Library\**\*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(libraryNugetIncludes)" DestinationFolder="$(Library-NugetFolder)\%(RecursiveDir)" />
-		<FileUpdate Files="$(Library-NugetFolder)\N2.Library.nuspec" Regex="{Version}" ReplacementText="$(Version)" />
-
-		<Copy SourceFiles="@(TextFiles)" DestinationFolder="$(Library-NugetFolder)\Content\N2\" />
-
-		<Exec Command="$(BuildFolder)\lib\NuGet.exe pack -OutputDirectory .." WorkingDirectory="$(Library-NugetFolder)\" />
-	</Target>
-
-	<Target Name="SQLite-NuGet">
-		<ItemGroup>
-			<sqliteNugetIncludes Include="$(BuildFolder)\Nuget\SQLite\**\*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(sqliteNugetIncludes)" DestinationFolder="$(SQLite-NugetFolder)\%(RecursiveDir)" />
-		<FileUpdate Files="$(SQLite-NugetFolder)\N2.SQLite.nuspec" Regex="{Version}" ReplacementText="$(Version)" />
-
-		<Exec Command="$(BuildFolder)\lib\NuGet.exe pack -OutputDirectory .." WorkingDirectory="$(SQLite-NugetFolder)\" />
-	</Target>
-
-	<Target Name="Razor-NuGet">
-		<ItemGroup>
-			<razorNugetIncludes Include="$(BuildFolder)\Nuget\Razor\**\*" />
-			<nugetRazorBinFiles Include="$(SrcFolder)\Framework\Razor\bin\$(Configuration)\N2.Razor.*;" />
-		</ItemGroup>
-		<Copy SourceFiles="@(razorNugetIncludes)" DestinationFolder="$(Razor-NugetFolder)\%(RecursiveDir)" />
-		<Copy SourceFiles="@(nugetRazorBinFiles)" DestinationFolder="$(Razor-NugetFolder)\lib\NET40" />
-		<FileUpdate Files="$(Razor-NugetFolder)\N2.Razor.nuspec" Regex="{Version}" ReplacementText="$(Version)" />
-
-		<Exec Command="$(BuildFolder)\lib\NuGet.exe pack -OutputDirectory .." WorkingDirectory="$(Razor-NugetFolder)\" />
-	</Target>
-	
-	<Target Name="Framework-NuGet" DependsOnTargets="Framework-Deploy;Library-NuGet;SQLite-NuGet;Razor-NuGet">
-		<ItemGroup>
-			<nugetFrameworkBinFiles Include="$(ManagementFolder)\bin\N2*.dll;
-											 $(ManagementFolder)\bin\N2*.pdb;
-											 $(SrcFolder)\Framework\Packaging\bin\$(Configuration)\N2.Packaging.dll;
-											 $(LibFolder)\NHibernate.Caches.*.dll;"
-									Exclude="$(ManagementFolder)\bin\N2.???;
-											 $(ManagementFolder)\bin\N2.Security.*;
-											 $(ManagementFolder)\bin\N2.Templates.*;" />
-		</ItemGroup>
-		<Copy SourceFiles="@(nugetFrameworkBinFiles)" DestinationFolder="$(Framework-NugetFolder)\lib" />
-		
-		<!-- Using DotNetZip since MSBuild Community Tasks Zip doesn't include directory entries -->
-		<Delete Files="$(Framework-NugetFolder)\content\N2\N2.zip" Condition="Exists('$(Framework-NugetFolder)\content\N2\N2.zip')" />
-		<Copy SourceFiles="$(Framework-DeployFolder)\N2\web.config"	DestinationFolder="$(Framework-NugetFolder)\content\N2\" />
-		<Exec Command="$(BuildFolder)\lib\BuildSupport.exe ZipDirectory &quot;$(Framework-NugetFolder)\content\N2\N2.zip&quot; &quot;$(Framework-DeployFolder)\N2&quot; &quot;N2&quot;" />
-
-		<ItemGroup>
-			<frameworkNugetIncludes Include="$(BuildFolder)\Nuget\Framework\**\*" />
-		</ItemGroup>
-		<Copy SourceFiles="@(frameworkNugetIncludes)" DestinationFolder="$(Framework-NugetFolder)\%(RecursiveDir)" />
-		<FileUpdate Files="$(Framework-NugetFolder)\N2.Cms.nuspec" Regex="{Version}" ReplacementText="$(Version)" />
-
-		<Exec Command="$(BuildFolder)\lib\NuGet.exe pack -OutputDirectory .." WorkingDirectory="$(Framework-NugetFolder)\" />
-	</Target>
-
-	<Target Name="Framework-ZipDeploy" DependsOnTargets="Framework-Deploy;Framework-Zip" />
-
-	<Target Name="Framework-Zip">
-		<ItemGroup>
-			<ZipDeploy-Framework Include="$(Framework-DeployFolder)\**" />
-		</ItemGroup>
-
-		<Error Condition="'@(ZipDeploy-Framework)' == ''" Text="Nothing in '$(Framework-DeployFolder)'. Do deploy first." />
-
-		<Zip Files="@(ZipDeploy-Framework)"       WorkingDirectory="$(Framework-DeployFolder).."              ZipFileName="$(Framework-DeployFolder).zip" />
-	</Target>
-
 </Project>
